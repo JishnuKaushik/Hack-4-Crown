@@ -274,3 +274,30 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **All 4 PROJECT_SPEC.md §1 demo success criteria now buildable end to end: submit→classify→priority (✓ P1/P2), duplicate merge (✓ P3), status update reflected to citizen (✓ P3/P4), map colored by priority (✓ this entry).**
 
 **Next:** P6 — deploy config, final secret scan.
+
+---
+
+## 2026-08-14 — P6: deploy config, final secret scan
+
+**Done, in the exact order CLAUDE.md's P6 kickoff prompt specifies (secret scan + full history grep *before* touching anything):**
+- `bash scripts/check-secrets.sh` on the clean tree, then `git log -p --all | grep -iE "secret_key|api_key|password"` across the **entire** history (`--all`, including the divergent `feat/frontend-core` branch) — every match was a variable/function name or doc prose (`hash_password`, `verify_password`, form-field state hooks, README instructions), zero literal secret values. Clean.
+- `backend/Procfile` + `render.yaml` (Render Blueprint) for the backend. **Verified the Blueprint YAML against Render's actual docs via WebFetch** rather than writing from memory — confirmed `sync: false` (paired with `value: ""`) is the documented way to force manual-entry-only env vars, and that `runtime` (not the deprecated `env`) is the correct key. Fixed one gap this surfaced: my first draft omitted `value: ""` next to `sync: false` for `SECRET_KEY`/`ALLOWED_ORIGINS`.
+- `frontend/vercel.json` + `frontend/public/_redirects` — both add the SPA fallback rewrite (`/* → /index.html`) that `react-router`'s `BrowserRouter` needs on a static host (without it, refreshing on `/dashboard` 404s). Verified `_redirects` actually lands in `dist/` after `npm run build`, not just assumed Vite's `public/` copy behavior.
+- `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile` (+ `frontend/nginx.conf` for the SPA fallback in the container), `.dockerignore` (root + frontend). **Explicitly flagged UNVERIFIED in the files themselves and here**: no Docker binary available in this dev environment, so none of this was build-tested. The backend Dockerfile's directory layout (`/app/backend/` + `/app/ai/` as siblings inside the image) was reasoned through carefully against `backend/app/__init__.py`'s `sys.path` bootstrap (`parents[2]`) to make sure the same "ai/ is a repo-root sibling" assumption holds inside the container — but reasoning through it isn't the same as running it. Recommended in the README: `docker compose config` (cheap, catches YAML/reference errors) and a real `docker compose build` before trusting it for anything.
+- README `## Deploy` section: platform choices, env var setup per platform, CORS note, and the Docker caveat stated plainly (not buried).
+
+**Root cause fixes:** none this unit — the Render YAML gap above was caught by verification *before* commit, not after a failure.
+
+**Verification (real):**
+- `render.yaml` / `docker-compose.yml`: parsed with `yaml.safe_load` (valid YAML, correct structure) — not full deploy verification, but confirms they're at least syntactically real.
+- `vercel.json`: parsed with `json.load`.
+- Full backend boot (`uvicorn app.main:app` → `/health` → 200) and full frontend `npm run build` re-run clean after all deploy-file additions (nothing in `app/` or `src/` changed, but confirms the deploy-config additions didn't somehow break the app itself).
+- Final `bash scripts/check-secrets.sh` clean on every commit in this unit, as always.
+
+**Assumptions:** Docker deploy config is unverified (stated above and in the files/README, not glossed over).
+
+**Known Issues:**
+- `feat/frontend-core` (the third, unmerged, divergent frontend/auth branch discovered during the P4 map-view session — see the previous DEVLOG entry) is still unreconciled with `main`. Not touched this session; flagging again since P6 is nominally "wrap-up" and it's still an open loose end for whoever picks this up next.
+- `ai/constants.py` vs `backend/app/scoring.py` duplication (flagged in the P3 entry) is also still unreconciled.
+
+**P6 complete. All 6 phases (P0-P6) done, merged to `main`, browser-verified at every stage. `main` is dozens of commits ahead of `origin/main` — nothing pushed, per the "never push without explicit ask" rule.**

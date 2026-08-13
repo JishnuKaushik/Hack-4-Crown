@@ -124,3 +124,37 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **P1 vertical slice complete: submit → AI (stubbed) → stored with priority → retrievable, browser-verified end to end.**
 
 **Next:** P2 — wire the real AI pipeline (`ai/pipeline.py`: CLIP zero-shot classification, severity heuristic, embeddings) into `POST /reports`, replacing the stub.
+
+---
+
+## 2026-08-13 — P2: AI online (CLIP classification, severity, embeddings)
+
+**Done:**
+- Verified `torch`/`torchvision`/`open_clip_torch` actually install and work on this Python 3.14 (native Windows) setup before writing any code against them — real risk given how new 3.14 is. `torch==2.13.0+cpu` has a native `cp314-win_amd64` wheel; `open_clip_torch==3.3.0` installs cleanly on top. Verified the exact `open_clip.create_model_and_transforms`/`get_tokenizer` signatures via `inspect.signature` on the installed version rather than assuming from memory (CLAUDE.md §3.2).
+- `ai/embeddings.py`: CLIP `ViT-B-32`/`laion2b_s34b_b79k` singleton (lazy-loaded once, `warm_up()` forces it at app startup instead of on the first request), `encode_image()`/`encode_text()` returning float32 L2-normalized vectors. `EMBEDDING_DIM = 512` is a static constant (not derived from the model) specifically so the failure-fallback path never has to touch the model to build a zero vector.
+- `ai/classifier.py`: zero-shot classification — one natural-language prompt per category (10 of the 11 `CATEGORIES`; `other` is the fallback, not a prompted class), softmax over cosine similarities scaled by the conventional CLIP logit scale (100), `confidence < 0.25` → `category="other"`. Threshold branch logic verified in isolation with a controlled tiny text-feature matrix (real CLIP embeddings can't reliably be forced into a "uniform" case, so the fallback path was tested with a synthetic 5-orthogonal-category setup instead — same code path, deterministic input).
+- `ai/severity.py`: heuristic 1-5 estimate combining `CATEGORY_CRITICALITY` (imported from `app.scoring`, not duplicated — CLAUDE.md §3.1), an edge-density "affected area" proxy (PIL `FIND_EDGES` on grayscale), and a confidence blend that pulls the result toward the neutral midpoint (3) when confidence is low. **Deliberately excludes** the spec's 4th signal ("duplicate count"): `analyze_image()`'s frozen signature has no report-count input, and per PROJECT_SPEC §1's flow diagram, severity is computed *before* the dedup check runs — documented in the module docstring rather than silently dropped.
+- `ai/pipeline.py`: `analyze_image()`, the sole entry point. Never raises — catches `UnidentifiedImageError`/`OSError`/`ValueError`/`RuntimeError` and returns the fallback (`category="other", confidence=0.0, severity=3, embedding=zeros`). Also short-circuits to the same fallback when `settings.ai_enabled` is `False`.
+- Wired into `backend/app/routers/reports.py`: real `analyze_image()` call (via `run_in_threadpool`, since CLIP inference is synchronous/CPU-bound and would otherwise block the event loop inside the `async def` endpoint), real embedding persisted to `report_embeddings`. `backend/app/main.py` lifespan now calls `ai.embeddings.warm_up()` at startup when AI is enabled, wrapped in try/except so a warm-up failure degrades to per-request fallback instead of crashing boot.
+
+**Root cause fixes / design decisions:**
+1. **Cross-package import:** `ai/` is a sibling of `backend/` at the repo root (per PROJECT_SPEC §3), not a backend subpackage, so `from ai.pipeline import analyze_image` doesn't resolve from backend's own cwd. Fixed with a `sys.path` bootstrap in `backend/app/__init__.py` (runs once, automatically, before any `app.*` submodule) rather than requiring `PYTHONPATH` to be set manually — the latter is easy to forget and would silently break the "uvicorn boots clean" gate in a fresh shell.
+2. **CLAUDE.md vs PROJECT_SPEC fallback-category wording conflict:** CLAUDE.md §4 describes the AI failure fallback using `category="unclassified"`; PROJECT_SPEC §7's literal contract for `analyze_image()` says `category="other"`, and `"unclassified"` isn't a member of the frozen `CATEGORIES` list at all. Resolved in favor of PROJECT_SPEC (`"other"`), per CLAUDE.md's own preamble naming PROJECT_SPEC as authoritative for schema/contract values — documented in `ai/pipeline.py`'s module docstring rather than silently picking one. Not treated as a hard-stop conflict since it's a wording mismatch in prose, not a genuine architectural disagreement.
+
+**Verification (real, on this machine — no mocked AI output presented as real):**
+- Happy path: real image → non-zero, L2-normalized 512-dim embedding persisted to `report_embeddings` (checked directly via sqlite3, not just trusting the response body).
+- Failure fallback (corrupt file, nonexistent file): `analyze_image()` returns the exact documented fallback in both cases, confirmed never raises.
+- **P2 gate — "kill the model deliberately, confirm submissions still succeed":** booted with `AI_ENABLED=false`; `POST /reports` still returned `201` with `category="other", ai_confidence=0.0, severity=3`.
+- **P2 gate — 3 real photos, categories + priority scores** (synthetic test images — no real civic photos available in this environment, flagged explicitly since PROJECT_SPEC's own gate language says "real photo"):
+  - Solid blue square → `illegal_dumping`, confidence 0.302, severity 3, priority 41.0
+  - Gray field with a dark irregular ellipse (built to visually resemble a pothole) → **`pothole`, confidence 0.958**, severity 3, priority 46.0 — strong evidence the zero-shot classifier is doing genuine semantic matching, not returning noise
+  - Multi-colored cluttered scene → `illegal_dumping`, confidence 0.340, severity 3, priority 41.0
+- Cleaned up all test DB/upload artifacts after each verification pass.
+
+**Assumptions:** none new beyond the fallback-category resolution above.
+
+**Known Issues:** classification was only verified against synthetic test images (no real pothole/garbage/streetlight photos on hand in this environment) — the pothole-lookalike result (95.8% confidence) is a strong positive signal, but real-world accuracy on genuine field photos is not independently confirmed here. Model weights download from HuggingFace Hub on first run (~600MB, cached afterward at `~/.cache/huggingface`) — first boot on a fresh machine (or fresh deploy target) will be slow; `warm_up()` at least keeps that cost at startup instead of on a user's first request.
+
+**P2 complete: real CLIP classification + severity + embeddings live in `POST /reports`, AI-failure degradation verified.**
+
+**Next:** P3 — real duplicate detection (geo+time SQL pre-filter, then cosine similarity on the small candidate set) and the authority dashboard UI.

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from app.auth import get_current_user, get_current_user_optional, require_authority
 from app.config import settings
 from app.database import get_db
 from app.dedup import find_duplicate_canonical
@@ -65,12 +66,16 @@ async def create_report(
     description: str | None = Form(None),
     address: str | None = Form(None),
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> ReportCreateResponse:
     if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
         raise HTTPException(status_code=422, detail="Invalid latitude/longitude")
 
     image_path = await save_report_image(image)
-    user = _get_demo_user(db)
+    # PROJECT_SPEC.md §6 doesn't mark POST /reports as requiring auth (unlike
+    # /reports/mine and PATCH .../status) — anonymous reporting is allowed.
+    # Attribute to the real user when logged in, demo user otherwise.
+    user = current_user if current_user is not None else _get_demo_user(db)
 
     absolute_image_path = str(settings.upload_dir / image_path)
     # analyze_image() is CPU-bound (CLIP inference) and synchronous; run it
@@ -181,6 +186,19 @@ def list_reports(
     return [_to_report_out(r) for r in reports]
 
 
+@router.get("/mine", response_model=list[ReportOut])
+def list_my_reports(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> list[ReportOut]:
+    stmt = (
+        select(Report)
+        .where(Report.user_id == current_user.id)
+        .order_by(Report.created_at.desc())
+    )
+    reports = db.execute(stmt).scalars().all()
+    return [_to_report_out(r) for r in reports]
+
+
 @router.get("/{report_id}", response_model=ReportDetailOut)
 def get_report(report_id: int, db: Session = Depends(get_db)) -> ReportDetailOut:
     report = db.get(Report, report_id)
@@ -201,12 +219,11 @@ def get_report(report_id: int, db: Session = Depends(get_db)) -> ReportDetailOut
 
 @router.patch("/{report_id}/status", response_model=ReportOut)
 def update_report_status(
-    report_id: int, body: StatusUpdateRequest, db: Session = Depends(get_db)
+    report_id: int,
+    body: StatusUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authority),
 ) -> ReportOut:
-    # NOTE: PROJECT_SPEC.md §6 marks this "Authority role only" — role
-    # enforcement is not implemented yet (no auth system exists before P4,
-    # see the demo-user note on create_report). Anyone can call this until
-    # P4 wires up require_authority(). Tracked, not silently skipped.
     if body.status not in STATUSES:
         raise HTTPException(status_code=422, detail=f"Unknown status: {body.status}")
 
@@ -216,7 +233,15 @@ def update_report_status(
 
     old_status = report.status
     report.status = body.status
-    db.add(StatusHistory(report_id=report.id, old_status=old_status, new_status=body.status, note=body.note))
+    db.add(
+        StatusHistory(
+            report_id=report.id,
+            old_status=old_status,
+            new_status=body.status,
+            changed_by=current_user.id,
+            note=body.note,
+        )
+    )
     db.commit()
     db.refresh(report)
 

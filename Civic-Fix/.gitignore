@@ -1,0 +1,91 @@
+# ============================
+# SECRETS — never commit these
+# ============================
+.env
+.env*.local
+.env.development
+.env.production
+.env.test
+!.env.example
+!.env.local.example
+*.pem
+*.key
+*.cert
+*.crt
+*credentials*.json
+*service-account*.json
+supabase/.temp/
+supabase/.branches/
+
+# ==================
+# Node / npm / yarn
+# ==================
+node_modules/
+.pnp
+.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json.bak
+
+# =============
+# Next.js build
+# =============
+.next/
+out/
+build/
+dist/
+.turbo/
+next-env.d.ts
+
+# =========
+# Vercel
+# =========
+.vercel
+
+# =========
+# Testing
+# =========
+coverage/
+.nyc_output/
+
+# =========
+# TypeScript
+# =========
+*.tsbuildinfo
+
+# =========================
+# OS-generated junk
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# =========================
+# Editor / IDE
+# =========================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Claude Code local state (don't share team member's local context)
+# =========================
+.claude/settings.local.json
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Misc local scratch
+# =========================
+*.tmp
+*.bak
+.local/

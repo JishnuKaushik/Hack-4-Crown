@@ -158,3 +158,38 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **P2 complete: real CLIP classification + severity + embeddings live in `POST /reports`, AI-failure degradation verified.**
 
 **Next:** P3 — real duplicate detection (geo+time SQL pre-filter, then cosine similarity on the small candidate set) and the authority dashboard UI.
+
+---
+
+## 2026-08-13 — P3: duplicate detection, merge logic, status/history, authority dashboard
+
+**Done:**
+- `backend/app/geo.py`: `haversine_distance_meters()`, verified against known geometric distances (0m same-point, ~50m offset, 1° longitude at a given latitude) — not just unit-tested against itself.
+- `ai/dedup.py`: `cosine_similarity()`/`find_best_match()` — pure math, no DB access, tested in isolation.
+- `backend/app/dedup.py`: `find_duplicate_canonical()` — the 3-gate orchestration (geo bbox pre-filter → exact haversine ≤100m → category match → time window ≤30d → cosine similarity ≥0.86, checked only against the small surviving candidate set). Each gate tested **independently** against a real SQLite session (geo, category, visual, and time all verified to correctly reject on their own, not just pass when everything lines up).
+- Wired into `POST /reports`: on match, the new report gets `is_duplicate_of` set, the canonical's `report_count` increments and `priority_score` recomputes.
+- `GET /reports/{id}` (with `duplicates[]` and `status_history[]`) and `PATCH /reports/{id}/status` (writes `status_history`, validates against `STATUSES`) — both tested via real HTTP calls (valid update, invalid status → 422, 404 on missing report).
+- `GET /dashboard/stats` — `total`, `by_status`, `by_category`, `avg_resolution_hours`, `high_priority_count`, all canonical-only. Verified against real seeded data with a mix of statuses/categories and one resolved report.
+- Frontend: `Dashboard.tsx` (stat cards, status/category/min-priority filters, inline status-update dropdown per report), routing added (`App.tsx` now has `/` → Report, `/dashboard` → Dashboard, since there are two real pages now).
+
+**Root cause fixes:**
+1. **Bug caught before it ever ran against the live endpoint:** `datetime.now(timezone.utc) - canonical.created_at` would have raised `TypeError: can't subtract offset-naive and offset-aware datetimes` the moment a duplicate merge happened. **Cause:** SQLAlchemy's SQLite `DateTime` column drops tzinfo on read — `created_at` is always written as UTC (`_utcnow()`), but comes back as a naive datetime object. Verified this directly (`u.created_at.tzinfo` → `None`) before writing the fix, not assumed. **Fix:** `models.py` gained `as_utc()`, re-attaching `timezone.utc` to naive values before any Python-side arithmetic. SQL-side comparisons (`WHERE created_at >= cutoff`) were *not* affected — confirmed separately, since SQLAlchemy's bind-parameter conversion is consistent regardless of which side of the query holds the datetime.
+2. **Process mistake, not a code bug:** committed `geo.py` directly to `main` — forgot to branch before starting P3. Caught immediately via `git branch --show-current`. Fixed by creating `feat/p3-dedup-dashboard` at that commit, then `git reset --hard HEAD~1` on `main` to restore it to the P2 merge point. Commit was preserved on the new branch; nothing lost, `main` never had a stray commit pushed anywhere.
+
+**Concurrent session note:** the user ran a second Claude/Antigravity session directly in this same working directory (not the isolated worktree set up for the parallel map-view session) that substantially reworked `ai/classifier.py`, `ai/dedup.py`, `ai/embeddings.py`, `ai/pipeline.py`, `ai/severity.py`, and added `ai/constants.py` + a full `ai/tests/` pytest suite + `ai/samples/`. Before building anything further on top of it: re-ran the full regression suite this session already relies on — real HTTP submit → classify → embed → dedup-merge flow, and the `AI_ENABLED=false` fallback — all identical results to before the external changes, so `analyze_image()`'s contract held. Did **not** edit the reworked `ai/` files further (that module now has active concurrent work happening in it) beyond verifying compatibility.
+- **Known issue introduced by that work, not fixed here:** `ai/constants.py` duplicates `backend/app/scoring.py`'s frozen values (CATEGORIES, weights, thresholds) so `ai/` tests can run standalone without backend on the path — this is exactly the duplication CLAUDE.md §3.1 says not to have. Real tension between "one source of truth" and "ai/ must be standalone-testable"; needs a team decision (e.g. backend imports from `ai/constants.py` instead of the reverse, or `ai/` tests get a conftest shim) rather than a unilateral fix mid-flight on someone else's in-progress module.
+- **Known issue, not fixed here:** `ai/tests/test_dedup.py::test_3gate_duplicate_all_pass` is flaky — uses unseeded `np.random.randn` noise that can occasionally push cosine similarity below the 0.86 threshold. Not touched, since it's in a test file that may be under active edit in the concurrent session.
+
+**Verification (real, via the actual HTTP API):**
+- **P3 core gate — "two similar photos 50m apart → one canonical entry with report_count=2":** submitted the same test image at (28.4595, 77.0266) then (28.45995, 77.0266) — report 2 came back `is_duplicate_of: 1`, and `GET /reports` showed report 1 with `report_count: 2`, `priority_score` correctly recomputed 46.0 → 48.0. `GET /reports?include_duplicates=true` correctly showed both.
+- Adjacent case: a genuinely different photo far away still created its own canonical entry (no false-positive merging).
+- `GET /reports/{id}` detail correctly listed the duplicate under `duplicates[]`.
+- `PATCH .../status` correctly updated status, wrote history, rejected an invalid status with 422, 404'd on a missing report.
+- Dashboard browser-verified with Playwright against live seeded data: stats cards, category filter, and a live status-update click all worked with zero console errors (screenshots captured). Regression-checked `/` (the Report page) still renders correctly after adding routing.
+
+**Assumptions:**
+- `PATCH /reports/{id}/status` has **no role check yet** — PROJECT_SPEC §6 marks it "Authority role only," but no auth system exists before P4 (same reasoning as the P1 demo-user note). Documented inline in the endpoint; anyone can call it until P4.
+
+**P3 complete: real dedup/merge verified end to end, authority dashboard live and browser-tested.**
+
+**Next:** P4 — Leaflet map (being built in parallel by a second session in an isolated worktree, `feat/p4-map-view`, frontend-only), citizen `/track` view, JWT auth + role gating (including finally locking down `PATCH .../status`).

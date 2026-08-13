@@ -4,6 +4,8 @@ Citizens report civic issues (potholes, garbage, broken streetlights, waterloggi
 
 See `PROJECT_SPEC.md` for the full architecture/schema/API contract, and `DEVLOG.md` for the build history and root-cause notes.
 
+> This repo hosts two independent projects side by side: `CivicLens/` (this one) and `Civic-Fix/`. Every command below assumes you're already inside `CivicLens/` (`cd CivicLens` from the repo root first).
+
 ## Stack
 
 FastAPI + SQLAlchemy 2.x + SQLite (backend), CLIP (`open_clip`, `ViT-B-32`/`laion2b_s34b_b79k`) for zero-shot classification + embeddings, React 19 + Vite + TypeScript + Tailwind v3 (frontend), JWT auth.
@@ -106,9 +108,9 @@ See `.env.example` (backend) and `frontend/.env.example`. Real secrets go in `.e
 
 Target platforms per the stack decision: backend on Render or Railway, frontend on Vercel or Netlify (both free-tier, no infra to manage). Docker Compose is for local dev parity only, not how the actual deploy targets run the app.
 
-**Backend (Render):** `render.yaml` at the repo root is a Render Blueprint — connect the repo in the Render dashboard and it reads this file. It declares every env var from `.env.example`; `SECRET_KEY` and `ALLOWED_ORIGINS` are marked `sync: false` (set them manually in the Render dashboard — the file deliberately has no real values). `backend/Procfile` gives the same start command for platforms (like Railway) that read a `Procfile` instead.
+**Backend (Render):** `render.yaml` is a Render Blueprint, but it now lives at `CivicLens/render.yaml`, not the outer repo root — since this repo hosts two projects, Render's Blueprint auto-detection (which looks at the repo root by default) won't find it as-is. When connecting the repo in the Render dashboard, either point the Blueprint at the `CivicLens` root directory if Render's UI offers that option, or deploy the backend as a plain Web Service instead (skip the Blueprint, set the build/start commands and env vars from `render.yaml` manually in the dashboard — same information, just entered by hand). It declares every env var from `.env.example`; `SECRET_KEY` and `ALLOWED_ORIGINS` are marked `sync: false` (set them manually in the Render dashboard — the file deliberately has no real values). `backend/Procfile` gives the same start command for platforms (like Railway) that read a `Procfile` instead, and generally handle monorepo subdirectories more directly (point the service's root directory at `CivicLens/backend`).
 
-**Frontend (Vercel/Netlify):** build command `npm run build`, output directory `dist`, one env var (`VITE_API_BASE_URL`, set to the deployed backend's URL + `/api/v1`). `frontend/vercel.json` and `frontend/public/_redirects` both add the SPA fallback rewrite (`/* → /index.html`) that client-side routing (`react-router` `BrowserRouter`) needs — without it, refreshing on `/dashboard` 404s on a static host. Verified: `_redirects` actually lands in `dist/` after `npm run build` (Vite copies `public/` verbatim).
+**Frontend (Vercel/Netlify):** set the project's root directory to `CivicLens/frontend` (this repo has two projects, so the platform needs to know which subfolder to build). Build command `npm run build`, output directory `dist`, one env var (`VITE_API_BASE_URL`, set to the deployed backend's URL + `/api/v1`). `frontend/vercel.json` and `frontend/public/_redirects` both add the SPA fallback rewrite (`/* → /index.html`) that client-side routing (`react-router` `BrowserRouter`) needs — without it, refreshing on `/dashboard` 404s on a static host. Verified: `_redirects` actually lands in `dist/` after `npm run build` (Vite copies `public/` verbatim).
 
 **CORS:** set the backend's `ALLOWED_ORIGINS` to the deployed frontend's real origin once you know it (comma-separated if more than one, e.g. a Vercel preview + production URL).
 

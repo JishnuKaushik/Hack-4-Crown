@@ -301,3 +301,23 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 - `ai/constants.py` vs `backend/app/scoring.py` duplication (flagged in the P3 entry) is also still unreconciled.
 
 **P6 complete. All 6 phases (P0-P6) done, merged to `main`, browser-verified at every stage. `main` is dozens of commits ahead of `origin/main` — nothing pushed, per the "never push without explicit ask" rule.**
+
+---
+
+## 2026-08-14 — Repo reorganized: CivicLens moved into its own subfolder
+
+**Done:** the user added a second, unrelated standalone project (`Civic-Fix/`) into this same git repo and asked for the layout to become "one repo, two projects." Moved every CivicLens file into a new `CivicLens/` subfolder via `git mv` (all 81 files registered as renames — history/blame preserved, zero content changes). `backend/.venv` and `frontend/node_modules` were deleted rather than moved (gitignored, disposable, user opted to reinstall fresh in the new location rather than move ~GB of installed packages).
+
+**Root cause fixes:** none — this was a pure reorganization, no bugs.
+
+**Verification:**
+- Checked `backend/app/__init__.py`'s `sys.path` bootstrap (`Path(__file__).resolve().parents[2]`) still resolves correctly post-move: it's a *relative* computation, and the whole `backend/`+`ai/` tree moved together as one atomic unit, so the sibling relationship (and therefore this bootstrap) is unaffected.
+- `bash scripts/check-secrets.sh` clean on the full 81-file rename.
+- Updated `CLAUDE.md` and `README.md` to reflect the new layout: added a top-of-file note that every path in each doc is relative to `CivicLens/`, not the outer repo root; corrected the two genuinely repo-root-relative things (`.git/hooks/pre-commit` install path) vs. the many that are just `CivicLens/`-relative (`.gitignore`, `DEVLOG.md` location); flagged a **real** deploy-affecting consequence in the README's Deploy section — Render's Blueprint auto-detection and Vercel/Netlify's root-directory default both assume repo-root, and now need to be pointed at the `CivicLens` subdirectory explicitly when actually deploying.
+- Confirmed the pre-commit hook at `.git/hooks/pre-commit` (a standalone copy from P0, not a symlink) is untouched by the move and still functions — verified via a `git commit --dry-run` sanity check plus the successful `check-secrets.sh` run above.
+
+**Assumptions:** folder named `CivicLens` (confirmed with user) rather than `Hack-4-Crown` (matching the repo/folder name) — user picked the product name instead.
+
+**Known Issues:** `backend/.venv` and `frontend/node_modules` need reinstalling from scratch inside `CivicLens/backend/` and `CivicLens/frontend/` before the app can run again (`pip install -r requirements.txt`, `npm install` — see README). `Civic-Fix/`'s own setup is out of scope for this project's `CLAUDE.md`/`DEVLOG.md`.
+
+**Next:** reinstall deps in the new location and re-run the full verification gate (backend boot, frontend build, browser smoke test) to confirm the move didn't silently break anything beyond what static analysis can catch.

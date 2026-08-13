@@ -63,8 +63,8 @@ async def create_report(
     image: UploadFile = File(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
-    description: str | None = Form(None),
-    address: str | None = Form(None),
+    description: str | None = Form(None, max_length=2000),
+    address: str | None = Form(None, max_length=255),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> ReportCreateResponse:

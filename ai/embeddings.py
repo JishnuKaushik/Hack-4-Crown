@@ -13,6 +13,11 @@ from PIL import Image
 _MODEL_NAME = "ViT-B-32"
 _PRETRAINED = "laion2b_s34b_b79k"
 
+# Static, known ahead of time for ViT-B-32 — used by pipeline.py's failure
+# fallback, which must not call embedding_dim() (that would load the model,
+# defeating the point of a fallback for "the model failed to load").
+EMBEDDING_DIM = 512
+
 _model: torch.nn.Module | None = None
 _preprocess = None
 _tokenizer = None

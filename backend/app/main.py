@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app import models  # noqa: F401  — ensures models are registered on Base.metadata
+from app.routers import reports
 
 
 @asynccontextmanager
@@ -25,6 +27,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+settings.upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+
+app.include_router(reports.router, prefix="/api/v1")
 
 
 @app.get("/health")

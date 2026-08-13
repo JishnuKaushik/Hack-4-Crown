@@ -76,6 +76,7 @@ Open `http://localhost:5173`.
 |---|---|---|
 | `/` | Anyone | Report an issue — photo + location (geolocation or manual), submits to `POST /reports` |
 | `/track` | Logged-in citizen | Their own submitted reports (`GET /reports/mine`) |
+| `/map` | Anyone | Leaflet map, markers colored by priority, popup with photo/category/status |
 | `/dashboard` | Authority role only | Sorted/filterable report list, stat cards, status updates |
 | `/login` | Anyone | Login / register (citizen or authority role) |
 
@@ -87,6 +88,7 @@ Open `http://localhost:5173`.
 4. Submit a near-duplicate (same photo, nearby coordinates) — it merges into the existing report instead of creating a new one (`report_count` increments).
 5. View `/dashboard` as the authority — filter, and change a report's status.
 6. Log in as a citizen and check `/track` to see status update reflected.
+7. Check `/map` — same reports, plotted and colored by priority.
 
 ## AI degradation
 

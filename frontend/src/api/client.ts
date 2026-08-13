@@ -6,7 +6,17 @@ if (!baseURL) {
   throw new Error('VITE_API_BASE_URL is not set — check frontend/.env')
 }
 
+export const AUTH_TOKEN_KEY = 'civiclens_token'
+
 export const apiClient = axios.create({ baseURL })
+
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY)
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
 
 const apiOrigin = new URL(baseURL).origin
 

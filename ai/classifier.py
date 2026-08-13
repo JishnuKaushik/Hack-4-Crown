@@ -5,6 +5,10 @@ against one natural-language prompt per category.
 import numpy as np
 
 from ai import embeddings
+try:
+    from app.scoring import CATEGORIES
+except ImportError:
+    from ai.constants import CATEGORIES
 
 PROMPTS: dict[str, str] = {
     "pothole": "a photo of a pothole in a road",
@@ -22,10 +26,8 @@ PROMPTS: dict[str, str] = {
 _CATEGORY_ORDER = list(PROMPTS.keys())
 _CONFIDENCE_FLOOR = 0.25
 
-# CLIP's own trained logit_scale.exp() is typically ~100; using that fixed
-# scale for the pre-softmax logits is the standard zero-shot CLIP recipe
-# (see the CLIP paper / open_clip's zero-shot eval script). Heuristic in
-# the sense that we didn't re-derive it, but it's the conventional value.
+# CLIP's trained logit_scale.exp() is ~100; using fixed scale for pre-softmax
+# logits is the standard zero-shot CLIP classification recipe.
 _LOGIT_SCALE = 100.0
 
 _text_features: np.ndarray | None = None
@@ -39,9 +41,9 @@ def _get_text_features() -> np.ndarray:
 
 
 def classify(image_embedding: np.ndarray) -> tuple[str, float]:
-    """Returns (category, confidence). category falls back to "other" when
-    the top softmax probability is below _CONFIDENCE_FLOOR; the actual
-    computed confidence is still returned (not clamped/replaced).
+    """Returns (category, confidence). Category falls back to "other" when
+    the top softmax probability is below _CONFIDENCE_FLOOR (0.25); the actual
+    computed confidence is returned.
     """
     text_features = _get_text_features()
     logits = _LOGIT_SCALE * (text_features @ image_embedding)

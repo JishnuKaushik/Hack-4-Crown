@@ -43,7 +43,7 @@ def warm_up() -> None:
 
 def embedding_dim() -> int:
     model, _, _ = _get_model()
-    return model.visual.output_dim
+    return int(model.visual.output_dim)
 
 
 def encode_image(image: Image.Image) -> np.ndarray:
@@ -53,7 +53,7 @@ def encode_image(image: Image.Image) -> np.ndarray:
     with torch.no_grad():
         features = model.encode_image(tensor)
         features = features / features.norm(dim=-1, keepdim=True)
-    return features.squeeze(0).to(torch.float32).numpy()
+    return features.squeeze(0).to(torch.float32).cpu().numpy()
 
 
 def encode_text(prompts: list[str]) -> np.ndarray:
@@ -63,4 +63,4 @@ def encode_text(prompts: list[str]) -> np.ndarray:
     with torch.no_grad():
         features = model.encode_text(tokens)
         features = features / features.norm(dim=-1, keepdim=True)
-    return features.to(torch.float32).numpy()
+    return features.to(torch.float32).cpu().numpy()

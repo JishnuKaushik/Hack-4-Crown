@@ -2,10 +2,14 @@
 
 import math
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import numpy as np
+from PIL import Image
 
-from ai import dedup
+from ai import dedup, embeddings
 from ai.dedup import ReportCandidate
+
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
 
 def test_haversine_distance_zero():
@@ -57,9 +61,12 @@ def test_3gate_duplicate_all_pass():
     base_vec = np.random.randn(512).astype(np.float32)
     base_vec /= np.linalg.norm(base_vec)
 
-    # Near-identical embedding (similarity ~0.95)
-    noise = np.random.randn(512).astype(np.float32) * 0.1
-    dup_vec = base_vec + noise
+    # Controlled near-duplicate vector with cosine similarity ~0.95
+    noise = np.random.randn(512).astype(np.float32)
+    noise -= np.dot(base_vec, noise) * base_vec
+    noise /= np.linalg.norm(noise)
+
+    dup_vec = (0.95 * base_vec + np.sqrt(1 - 0.95**2) * noise).astype(np.float32)
     dup_vec /= np.linalg.norm(dup_vec)
 
     cand = ReportCandidate(
@@ -88,6 +95,63 @@ def test_3gate_duplicate_all_pass():
     assert similarity >= 0.86
 
 
+def test_3gate_duplicate_with_real_sample_images():
+    now = datetime.now(timezone.utc)
+    pothole_path = SAMPLES_DIR / "pothole.jpg"
+    pothole_dup_path = SAMPLES_DIR / "pothole_dup.jpg"
+    garbage_path = SAMPLES_DIR / "garbage.jpg"
+
+    if not pothole_path.exists() or not pothole_dup_path.exists():
+        return
+
+    with Image.open(pothole_path) as img1, Image.open(pothole_dup_path) as img2, Image.open(garbage_path) as img3:
+        emb_pothole = embeddings.encode_image(img1.convert("RGB"))
+        emb_pothole_dup = embeddings.encode_image(img2.convert("RGB"))
+        emb_garbage = embeddings.encode_image(img3.convert("RGB"))
+
+    # Near-duplicate pothole photo
+    sim_dup = dedup.cosine_similarity(emb_pothole, emb_pothole_dup)
+    assert sim_dup >= 0.86, f"Near duplicate similarity was {sim_dup}, expected >= 0.86"
+
+    # Completely different image (pothole vs garbage)
+    sim_diff = dedup.cosine_similarity(emb_pothole, emb_garbage)
+    assert sim_diff < 0.86, f"Different images similarity was {sim_diff}, expected < 0.86"
+
+    cand_pothole = ReportCandidate(
+        id=1,
+        category="pothole",
+        latitude=28.4595,
+        longitude=77.0266,
+        created_at=now - timedelta(days=1),
+        embedding=emb_pothole,
+        is_duplicate_of=None,
+    )
+
+    # 1. Query near-duplicate: 30m away, same category -> duplicate matched!
+    match = dedup.find_duplicate_3gates(
+        query_category="pothole",
+        query_latitude=28.4597,
+        query_longitude=77.0266,
+        query_created_at=now,
+        query_embedding=emb_pothole_dup,
+        candidates=[cand_pothole],
+    )
+    assert match is not None
+    assert match[0] == 1
+    assert match[1] >= 0.86
+
+    # 2. Query different image: same spot -> rejected by visual gate
+    match_diff = dedup.find_duplicate_3gates(
+        query_category="pothole",
+        query_latitude=28.4597,
+        query_longitude=77.0266,
+        query_created_at=now,
+        query_embedding=emb_garbage,
+        candidates=[cand_pothole],
+    )
+    assert match_diff is None
+
+
 def test_3gate_gate1_geo_fail():
     now = datetime.now(timezone.utc)
     vec = np.random.randn(512).astype(np.float32)
@@ -103,7 +167,7 @@ def test_3gate_gate1_geo_fail():
         is_duplicate_of=None,
     )
 
-    # Query report: 500m away (exceeds 100m radius)
+    # Query report: 550m away (exceeds 100m radius)
     result = dedup.find_duplicate_3gates(
         query_category="pothole",
         query_latitude=28.4645,  # ~550m north

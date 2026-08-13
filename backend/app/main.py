@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app import models  # noqa: F401  — ensures models are registered on Base.metadata
-from app.routers import dashboard, reports
+from app.routers import auth, dashboard, reports
 from ai import embeddings as ai_embeddings
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ app.add_middleware(
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 

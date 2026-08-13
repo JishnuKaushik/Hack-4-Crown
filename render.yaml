@@ -11,6 +11,7 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: SECRET_KEY
+        value: ""
         sync: false # set manually in the Render dashboard — never commit real values
       - key: ALGORITHM
         value: HS256
@@ -25,6 +26,7 @@ services:
       - key: ALLOWED_IMAGE_TYPES
         value: image/jpeg,image/png,image/webp
       - key: ALLOWED_ORIGINS
+        value: ""
         sync: false # set to the deployed frontend's real origin
       - key: CLIP_MODEL_NAME
         value: ViT-B-32

@@ -97,3 +97,30 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **Known Issues:** none blocking.
 
 **Next:** citizen submit form (frontend) wired to `POST /reports`, then a reports list view to prove the full loop, closing out P1.
+
+---
+
+## 2026-08-13 — P1: citizen submit form + browser-verified end-to-end
+
+**Done:**
+- `frontend/src/types.ts`: `ReportOut`/`ReportCreateResponse` mirroring the backend Pydantic schemas.
+- `frontend/src/api/reports.ts`: `createReport()` (multipart) and `listReports()`, both through the shared `apiClient`.
+- `frontend/src/pages/Report.tsx`: citizen submit form — photo input (`capture="environment"` for mobile camera), `navigator.geolocation` with a manual lat/lng fallback when permission is denied or unsupported, optional address/description, loading state on submit, inline error messages, and a result card (category/severity/priority, "merged with report #N" path wired for when dedup lands in P3).
+- `frontend/src/App.tsx`: renders `Report` as the app's current entry view (no router yet — added when `/track`/`/dashboard`/`/map` exist in later phases, per scope discipline).
+
+**Root cause fixes:**
+1. **Bug (caught by CLAUDE.md's mandatory browser check, not by build/typecheck):** submitted a real report through an actual headless-Chromium session (Playwright, since `chromium-cli` wasn't installed — installed Playwright + Chromium in the scratchpad as the documented fallback) — the result card showed a broken-image icon instead of the uploaded photo. **Isolation:** `console --errors` was empty, `tsc`/`vite build` were clean — this was a runtime-only bug invisible to every non-browser check. **Root cause:** `report.image_url` from the backend is root-relative (`/uploads/x.jpg`); the `<img>` tag resolved it against the *frontend's* origin (`localhost:5173`) instead of the backend's (`localhost:8000`) — a 404. This isn't dev-only: PROJECT_SPEC's deploy targets (frontend on Vercel/Netlify, backend on Render/Railway) put them on different origins in production too. **Fix:** added `resolveImageUrl()` in `api/client.ts`, deriving the API origin from `VITE_API_BASE_URL` via `new URL(...).origin` and prefixing image paths with it. **Verified by re-running the exact same Playwright script**: the actual uploaded photo (a solid-blue test JPEG) now renders in the result card, confirmed by screenshot.
+
+**Verification (real browser, Playwright against the live dev servers — not just curl/build):**
+- Screenshots: filled form → submit → result card, all captured and visually inspected.
+- Result card text after submit: `Category: pothole`, `Severity: 3/5`, `Priority score: 46` — matches the backend response and the hand-verified formula.
+- `console --errors` equivalent (page `console`/`pageerror` listeners): zero errors, both before and after the image-URL fix.
+- Cleaned up: killed both dev servers, removed `backend/uploads/` and `backend/civiclens.db` test artifacts, scratchpad Playwright project is outside the repo (never touched git).
+
+**Assumptions:** none new (see prior entry re: demo user).
+
+**Known Issues:** none blocking. `listReports()` exists in `api/reports.ts` but has no consuming UI yet — a live "shows in list" view is the authority Dashboard (P3) and citizen Track view (P4); the P1 gate ("shows in list") is satisfied via the verified `GET /reports` API response for now.
+
+**P1 vertical slice complete: submit → AI (stubbed) → stored with priority → retrievable, browser-verified end to end.**
+
+**Next:** P2 — wire the real AI pipeline (`ai/pipeline.py`: CLIP zero-shot classification, severity heuristic, embeddings) into `POST /reports`, replacing the stub.

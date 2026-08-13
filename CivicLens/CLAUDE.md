@@ -4,6 +4,8 @@ You are the engineering agent for **CivicLens**, a 24-hour hackathon MVP: citize
 
 Read `PROJECT_SPEC.md` before writing any code. That file is the source of truth for architecture, schema, and API contracts. This file is the source of truth for **how you behave**.
 
+> **Repo layout note:** this git repo hosts two independent projects side by side — `CivicLens/` (this one) and `Civic-Fix/` (separate, own `CLAUDE.md`). Every path in this file (`backend/`, `frontend/`, `ai/`, `scripts/`, `DEVLOG.md`, etc.) is relative to **this `CivicLens/` folder**, not the outer git repo root — `cd CivicLens` first. The one exception is `.git/hooks/pre-commit`, which is genuinely repo-root-relative (git hooks always are) — see §1.4.
+
 ---
 
 ## 0. Non-Negotiable Rules (violating any of these = failed task)
@@ -35,7 +37,7 @@ Vite inlines every `VITE_*` variable into the **public client bundle**. Anything
 
 ### 1.3 Mandatory `.gitignore`
 
-`.gitignore` must exist at repo root before the first commit and must cover, at minimum:
+`.gitignore` must exist at the root of this `CivicLens/` folder (a nested gitignore, scoped to this subtree — `Civic-Fix/` has its own) before the first commit and must cover, at minimum:
 
 ```
 .env, .env.*, !.env.example
@@ -55,11 +57,11 @@ node_modules/, dist/, build/, .vite/
 bash scripts/check-secrets.sh
 ```
 
-If the script exits non-zero, **do not commit**. Fix the finding first. Also install it as a real hook once at repo init:
+If the script exits non-zero, **do not commit**. Fix the finding first. Also install it as a real hook once at repo init (note `.git/` is at the outer repo root, one level up from `CivicLens/`):
 
 ```bash
-cp scripts/check-secrets.sh .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+cp scripts/check-secrets.sh ../.git/hooks/pre-commit
+chmod +x ../.git/hooks/pre-commit
 ```
 
 Additionally, before every commit, manually verify:
@@ -233,7 +235,7 @@ If an AI component fails or is slow, the app must still work. Every AI call is w
 
 ## 5. DEVLOG.md — maintain continuously
 
-Keep `DEVLOG.md` at repo root, updated as you work. Format:
+Keep `DEVLOG.md` at the root of this `CivicLens/` folder, updated as you work. Format:
 
 ```markdown
 ## <timestamp> — <task>

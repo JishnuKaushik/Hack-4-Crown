@@ -1,0 +1,130 @@
+# ============================================
+# SECRETS — NEVER COMMIT
+# ============================================
+.env
+.env.*
+!.env.example
+*.env
+secrets.json
+config.local.*
+
+# Keys & certs
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+*credentials*.json
+*service-account*.json
+*serviceaccount*.json
+gcloud-key*.json
+firebase-adminsdk*.json
+.aws/
+.gcloud/
+
+# ============================================
+# DATA — never commit user data or DBs
+# ============================================
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+backend/uploads/
+backend/media/
+uploads/
+media/
+data/raw/
+*.csv
+!data/samples/*.csv
+
+# ============================================
+# ML ARTIFACTS — too large for git
+# ============================================
+ai/models/
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pkl
+*.joblib
+*.safetensors
+*.bin
+!requirements.bin
+.cache/
+~/.cache/huggingface/
+wandb/
+runs/
+mlruns/
+
+# ============================================
+# PYTHON
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.ipynb_checkpoints/
+
+# ============================================
+# NODE / FRONTEND
+# ============================================
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+.npm
+.yarn/
+.pnp.*
+coverage/
+.eslintcache
+
+# ============================================
+# EDITORS / OS
+# ============================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ============================================
+# LOGS / TEMP
+# ============================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pip-log.txt
+tmp/
+temp/
+*.tmp
+*.bak

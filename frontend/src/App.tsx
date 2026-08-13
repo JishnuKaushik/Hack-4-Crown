@@ -3,6 +3,7 @@ import Report from './pages/Report'
 import Dashboard from './pages/Dashboard'
 import Track from './pages/Track'
 import Login from './pages/Login'
+import MapView from './pages/MapView'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 
 function Nav() {
@@ -14,6 +15,9 @@ function Nav() {
       </Link>
       <Link to="/track" className="text-gray-600 hover:text-gray-900">
         My reports
+      </Link>
+      <Link to="/map" className="text-gray-600 hover:text-gray-900">
+        Map
       </Link>
       <Link to="/dashboard" className="text-gray-600 hover:text-gray-900">
         Authority dashboard
@@ -39,6 +43,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Report />} />
           <Route path="/track" element={<Track />} />
+          <Route path="/map" element={<MapView />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/login" element={<Login />} />
         </Routes>

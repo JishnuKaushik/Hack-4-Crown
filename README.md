@@ -101,3 +101,15 @@ AI_ENABLED=false uvicorn app.main:app --reload
 ## Environment variables
 
 See `.env.example` (backend) and `frontend/.env.example`. Real secrets go in `.env` files (gitignored) or your deploy platform's env-var UI — never committed. Run `bash scripts/check-secrets.sh` before every commit (also installed as the pre-commit hook).
+
+## Deploy
+
+Target platforms per the stack decision: backend on Render or Railway, frontend on Vercel or Netlify (both free-tier, no infra to manage). Docker Compose is for local dev parity only, not how the actual deploy targets run the app.
+
+**Backend (Render):** `render.yaml` at the repo root is a Render Blueprint — connect the repo in the Render dashboard and it reads this file. It declares every env var from `.env.example`; `SECRET_KEY` and `ALLOWED_ORIGINS` are marked `sync: false` (set them manually in the Render dashboard — the file deliberately has no real values). `backend/Procfile` gives the same start command for platforms (like Railway) that read a `Procfile` instead.
+
+**Frontend (Vercel/Netlify):** build command `npm run build`, output directory `dist`, one env var (`VITE_API_BASE_URL`, set to the deployed backend's URL + `/api/v1`). `frontend/vercel.json` and `frontend/public/_redirects` both add the SPA fallback rewrite (`/* → /index.html`) that client-side routing (`react-router` `BrowserRouter`) needs — without it, refreshing on `/dashboard` 404s on a static host. Verified: `_redirects` actually lands in `dist/` after `npm run build` (Vite copies `public/` verbatim).
+
+**CORS:** set the backend's `ALLOWED_ORIGINS` to the deployed frontend's real origin once you know it (comma-separated if more than one, e.g. a Vercel preview + production URL).
+
+**Docker Compose (local only):** `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile` — **not build-tested** (no Docker available in the environment this was written in). Review before relying on them; run `docker compose config` to at least validate the compose file, and a real `docker compose build` before trusting it for anything. Requires `backend/.env` to exist first.

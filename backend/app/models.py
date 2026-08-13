@@ -10,6 +10,17 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def as_utc(dt: datetime) -> datetime:
+    """SQLite/SQLAlchemy's DateTime column drops tzinfo on read (values are
+    always written as UTC by _utcnow(), but come back naive) — attach it
+    back so datetime arithmetic against datetime.now(timezone.utc) doesn't
+    raise TypeError. SQL-side comparisons (WHERE created_at >= ...) aren't
+    affected: the bind-parameter conversion is consistent whichever side
+    of a query the datetime is on.
+    """
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 class User(Base):
     __tablename__ = "users"
 

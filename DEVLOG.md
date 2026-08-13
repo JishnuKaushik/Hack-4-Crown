@@ -250,3 +250,27 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **P5 complete.**
 
 **Next:** P6 — deploy config, final secret scan, merge the map-view branch whenever it lands.
+
+---
+
+## 2026-08-14 — P4 (completing): MapView, and reconciling the parallel-session worktrees
+
+**Context:** the parallel-session map-view worktree (`E:/GitHub/Hack-4-Crown-map`, branch `feat/p4-map-view`) never received a commit despite hours of this session's own progress through P3-P5. Asked the user how to proceed; they asked me to build it directly. Discovered in the process a **third** piece of unmerged work: `E:/GitHub/Hack-4-Crown-frontend` (branch `feat/frontend-core`) — one commit independently building Report/Track/Dashboard pages + minimal JWT auth, branched from the P2 merge point, diverged from and overlapping with the (already-merged, browser-tested) P3/P4 work in this session. **Left it completely untouched** — not mine to merge, reconcile, or delete; it may be someone's in-progress work. Removed only the empty `feat/p4-map-view` worktree/branch I had created myself for this exact purpose, and rebuilt it fresh off current `main`.
+
+**Done:**
+- `frontend/src/pages/MapView.tsx`: Leaflet map (`react-leaflet` v5, already installed since P0) using `CircleMarker` (SVG-rendered) rather than the default `Marker` — deliberately sidesteps the well-known Leaflet-default-icon-vs-bundler path issue entirely, and gives exact control over the marker color needed for the priority bands anyway. Verified the actual `react-leaflet` v5 type exports (`CircleMarker`, `MapContainer`, `Popup`, `TileLayer`) before writing code, not assumed from memory. Colors: green <40, amber 40-70, red >70 (exact PROJECT_SPEC §8 thresholds). Popup shows the real report thumbnail, category, priority, status, address, and merged-report count. Tile URL reads `VITE_MAP_TILE_URL` (added to both `.env`/`.env.example`) with an OSM default fallback.
+- Wired into routing/nav (`/map`, public — not auth-gated, matching PROJECT_SPEC §8's table which doesn't mark it restricted).
+
+**Verification (real browser, Playwright, against live seeded data):**
+- 18 real `CircleMarker` elements rendered on real Gurugram map tiles, correctly colored (screenshot confirms actual amber/red fills matching real priority scores, not placeholders).
+- Clicked a marker → popup opened with the correct data (`pothole`, `Priority: 59.3`, `Status: Rejected`, `Sector 45, Gurugram`, `3 reports merged`) — matched the seeded DB row exactly.
+- First popup screenshot looked like the thumbnail was missing; **did not assume this was fine** — checked `img.naturalWidth` directly (1024, i.e. genuinely loaded) and re-screenshotted with more wait time, confirming it was a screenshot-timing artifact, not a real bug, before moving on.
+- Zero console errors throughout.
+
+**Assumptions:** none new.
+
+**Known Issues:** `feat/frontend-core` (a competing, unmerged, unrelated-to-map body of frontend/auth work from a third worktree) still exists and hasn't been reconciled with the already-merged P3/P4 work in `main` — flagging here so the next person (or session) knows it's there and why it wasn't touched.
+
+**All 4 PROJECT_SPEC.md §1 demo success criteria now buildable end to end: submit→classify→priority (✓ P1/P2), duplicate merge (✓ P3), status update reflected to citizen (✓ P3/P4), map colored by priority (✓ this entry).**
+
+**Next:** P6 — deploy config, final secret scan.

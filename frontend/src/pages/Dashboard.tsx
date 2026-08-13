@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { listReports, updateReportStatus } from '../api/reports'
 import { getDashboardStats } from '../api/dashboard'
 import { resolveImageUrl } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 import { CATEGORIES, STATUSES } from '../types'
 import type { DashboardStats, ReportOut } from '../types'
 
@@ -12,6 +14,7 @@ const PRIORITY_BAND = (score: number): string => {
 }
 
 export default function Dashboard() {
+  const { user, loading: authLoading } = useAuth()
   const [reports, setReports] = useState<ReportOut[]>([])
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -43,9 +46,9 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    load()
+    if (user?.role === 'authority') load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, categoryFilter, minPriority])
+  }, [statusFilter, categoryFilter, minPriority, user])
 
   async function handleStatusChange(reportId: number, newStatus: string) {
     setUpdatingId(reportId)
@@ -57,6 +60,28 @@ export default function Dashboard() {
     } finally {
       setUpdatingId(null)
     }
+  }
+
+  if (authLoading) return null
+
+  if (!user || user.role !== 'authority') {
+    return (
+      <main className="mx-auto max-w-md px-6 py-10 text-center">
+        <h1 className="text-2xl font-semibold">Authority dashboard</h1>
+        <p className="mt-4 text-gray-500">
+          {user
+            ? "This page is restricted to authority accounts."
+            : (
+              <>
+                <Link to="/login" className="underline">
+                  Log in
+                </Link>{' '}
+                with an authority account to view the dashboard.
+              </>
+            )}
+        </p>
+      </main>
+    )
   }
 
   return (

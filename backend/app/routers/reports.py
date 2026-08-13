@@ -1,23 +1,17 @@
-import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from app.config import settings
 from app.database import get_db
 from app.models import Report, ReportEmbedding, User
 from app.schemas import ReportCreateResponse, ReportOut
 from app.scoring import CATEGORIES, compute_priority_score
 from app.storage import save_report_image
+from ai.pipeline import analyze_image
 
 router = APIRouter(prefix="/reports", tags=["reports"])
-
-# STUB: AI pipeline is not wired yet (arrives in P2, see ai/pipeline.py).
-# Every submission gets this fixed classification so the vertical slice
-# (submit -> store -> list) can be verified end to end.
-_STUB_CATEGORY = "pothole"
-_STUB_CONFIDENCE = 0.5
-_STUB_SEVERITY = 3
-_STUB_EMBEDDING_DIM = 512
 
 
 def _get_demo_user(db: Session) -> User:
@@ -75,8 +69,13 @@ async def create_report(
     image_path = await save_report_image(image)
     user = _get_demo_user(db)
 
+    absolute_image_path = str(settings.upload_dir / image_path)
+    # analyze_image() is CPU-bound (CLIP inference) and synchronous; run it
+    # off the event loop so one submission doesn't stall every other request.
+    analysis = await run_in_threadpool(analyze_image, absolute_image_path, latitude, longitude)
+
     priority = compute_priority_score(
-        severity=_STUB_SEVERITY, category=_STUB_CATEGORY, report_count=1, age_days=0
+        severity=analysis.severity, category=analysis.category, report_count=1, age_days=0
     )
 
     report = Report(
@@ -86,17 +85,22 @@ async def create_report(
         longitude=longitude,
         address=address,
         description=description,
-        category=_STUB_CATEGORY,
-        ai_confidence=_STUB_CONFIDENCE,
-        severity=_STUB_SEVERITY,
+        category=analysis.category,
+        ai_confidence=analysis.confidence,
+        severity=analysis.severity,
         priority_score=priority,
         report_count=1,
     )
     db.add(report)
     db.flush()
 
-    zero_vector = np.zeros(_STUB_EMBEDDING_DIM, dtype=np.float32)
-    db.add(ReportEmbedding(report_id=report.id, vector=zero_vector.tobytes(), dim=_STUB_EMBEDDING_DIM))
+    db.add(
+        ReportEmbedding(
+            report_id=report.id,
+            vector=analysis.embedding.tobytes(),
+            dim=analysis.embedding.shape[0],
+        )
+    )
 
     db.commit()
     db.refresh(report)

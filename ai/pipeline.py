@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 
 from ai import classifier, embeddings, severity as severity_module
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ def _fallback() -> AnalysisResult:
 
 
 def analyze_image(image_path: str, lat: float, lng: float) -> AnalysisResult:
+    if not settings.ai_enabled:
+        return _fallback()
     try:
         with Image.open(image_path) as img:
             img = img.convert("RGB")

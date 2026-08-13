@@ -15,3 +15,11 @@ bcrypt==4.0.1
 pillow==12.3.0
 numpy==2.5.2
 python-dotenv==1.2.2
+
+# AI layer (ai/pipeline.py, imported by app/routers/reports.py) — ai/ is a
+# sibling package at the repo root, not a backend subpackage, but its deps
+# must live in this same venv since the backend imports it in-process.
+# Canonical pins live in ai/requirements.txt; included here so
+# `pip install -r backend/requirements.txt` alone produces a working env.
+--extra-index-url https://download.pytorch.org/whl/cpu
+-r ../ai/requirements.txt

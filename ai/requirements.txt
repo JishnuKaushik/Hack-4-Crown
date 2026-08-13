@@ -1,0 +1,15 @@
+# Pinned exact versions, verified working on Python 3.14 (native Windows
+# build) as of 2026-08-13. torch/torchvision are CPU-only builds — install
+# with: pip install -r ai/requirements.txt --index-url https://download.pytorch.org/whl/cpu
+# (open_clip_torch and its other deps resolve fine from the default index).
+#
+# NOTE: these packages are imported by backend/app/routers/reports.py via
+# ai/pipeline.py, so in practice they're installed into backend/.venv, not
+# a separate ai/ environment — see backend/app/__init__.py for how ai/ (a
+# sibling of backend/, not a subpackage) is made importable.
+
+torch==2.13.0+cpu
+torchvision==0.28.0
+open_clip_torch==3.3.0
+pillow==12.3.0
+numpy==2.5.2

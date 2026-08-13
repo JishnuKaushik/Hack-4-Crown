@@ -23,9 +23,26 @@ export async function createReport(input: CreateReportInput): Promise<ReportCrea
   return data
 }
 
-export async function listReports(): Promise<ReportOut[]> {
+export interface ListReportsFilters {
+  status?: string
+  category?: string
+  min_priority?: number
+  sort?: 'priority' | 'recent'
+  limit?: number
+}
+
+export async function listReports(filters: ListReportsFilters = {}): Promise<ReportOut[]> {
   const { data } = await apiClient.get<ReportOut[]>('/reports', {
-    params: { sort: 'recent', limit: 20 },
+    params: { sort: 'priority', limit: 50, ...filters },
   })
+  return data
+}
+
+export async function updateReportStatus(
+  reportId: number,
+  status: string,
+  note?: string,
+): Promise<ReportOut> {
+  const { data } = await apiClient.patch<ReportOut>(`/reports/${reportId}/status`, { status, note })
   return data
 }

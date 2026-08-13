@@ -193,3 +193,32 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **P3 complete: real dedup/merge verified end to end, authority dashboard live and browser-tested.**
 
 **Next:** P4 — Leaflet map (being built in parallel by a second session in an isolated worktree, `feat/p4-map-view`, frontend-only), citizen `/track` view, JWT auth + role gating (including finally locking down `PATCH .../status`).
+
+---
+
+## 2026-08-13 — P4: JWT auth, role gating, citizen tracking
+
+**Done:**
+- `backend/app/auth.py`: `hash_password`/`verify_password` (bcrypt via passlib), `create_access_token`/`_decode_token` (JWT, HS256), `get_current_user` (401 if missing/invalid/expired token), `get_current_user_optional` (returns `None` instead of raising — verified `OAuth2PasswordBearer(auto_error=False)` actually does this before relying on it), `require_authority` (403 if role != "authority").
+- `backend/app/routers/auth.py`: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`. Login returns the same generic "Incorrect email or password" for both a wrong password and a nonexistent email — deliberate, avoids user enumeration.
+- `POST /reports` now attaches the real authenticated user when a valid token is present, falls back to the P1 demo user for anonymous submissions (PROJECT_SPEC §6 doesn't mark this endpoint as requiring auth, so anonymous reporting stays allowed).
+- `PATCH /reports/{id}/status` now requires `require_authority` — closes the gap flagged since P1/P3. `changed_by` is recorded on `status_history` (confirmed via direct DB query — not currently surfaced in the API response schema, a deliberate minimal-exposure choice).
+- `GET /reports/mine` (auth required) added.
+- Frontend: `auth/AuthContext.tsx` (login/register/logout, session in `localStorage`), an axios request interceptor in `api/client.ts` that attaches the bearer token automatically, `Login.tsx`, `Track.tsx` (citizen's own reports), `Dashboard.tsx` now gated to `role === "authority"` (shows a login prompt otherwise, matching PROJECT_SPEC §8 "Authority-only").
+
+**Root cause fixes:**
+1. **Process mistake, caught and fixed twice:** a concurrent Claude/Antigravity session the user ran directly in this same working directory (not the isolated worktree set up for the map-view session) was independently staging its own changes to `ai/tests/test_dedup.py`. Because both sessions share one `.git/index`, plain `git add <file> && git commit` had a race window — the other session's `git add` landed in between and got swept into two of my commits under my commit message. Caught both times by checking `git show --stat HEAD` immediately after committing. **Fix, applied going forward:** `git commit -m "..." -- <exact path>` instead of `git add` + bare `git commit` — this stages+commits only the given pathspec regardless of whatever else is sitting in the shared index, so it's race-proof. Recovery when it happened: `git reset --soft HEAD~1 && git restore --staged <swept-file>` — puts the swept file's edits back in the working tree, untouched and uncommitted, so the other session's work isn't lost or misattributed.
+2. Verified (not assumed) `EmailStr` needs the optional `email-validator` package — hit `ImportError` immediately on first use, installed and pinned `email-validator==2.3.0`.
+3. `.local` email domains (like the P1 demo user's `demo@civiclens.local`) are correctly rejected by `EmailStr` as a reserved TLD — not a bug, just meant using realistic-looking test emails for the auth flow. The demo user itself is unaffected since `_get_demo_user` constructs the ORM `User` directly, bypassing Pydantic email validation.
+
+**Verification (real, via HTTP API and then a full real-browser pass):**
+- API-level: register (citizen + authority), duplicate-email 409, login (correct/wrong-password/nonexistent-all paths, generic error), `/auth/me` (valid/missing/garbage token), anonymous vs. authenticated `POST /reports` (correct `user_id` attribution both ways), `GET /reports/mine` scoped correctly, `PATCH .../status` — 401 no token, 403 citizen token, 200 authority token.
+- Browser (Playwright, headless Chromium): dashboard locked when logged out → register as authority → dashboard unlocks and loads live stats → log out → dashboard re-locks → register as a separate citizen account → submit a real report while logged in → `/track` shows it. Zero console errors throughout. Screenshots captured (one attached above — nav bar correctly shows "Log out (City Admin)").
+
+**Assumptions:** none new.
+
+**Known Issues:** none blocking. Parallel map-view session (`feat/p4-map-view` worktree) has not committed yet as of this entry — will merge once it lands.
+
+**P4 complete: full JWT auth, role gating, citizen tracking, browser-verified end to end.**
+
+**Next:** merge the map-view branch when ready, then P5 (hardening: error/loading state audit, input validation pass, seed data, README) and P6 (deploy prep, final secret scan).

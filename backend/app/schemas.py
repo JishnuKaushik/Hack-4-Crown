@@ -41,3 +41,8 @@ class StatusHistoryOut(BaseModel):
 class ReportDetailOut(ReportOut):
     duplicates: list[ReportOut] = Field(default_factory=list)
     status_history: list[StatusHistoryOut] = Field(default_factory=list)
+
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+    note: str | None = None

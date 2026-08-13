@@ -70,3 +70,30 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **Known Issues:** none blocking. Node v24.14.0 is very new (non-LTS-yet) — if the team hits further native-addon breakage in later phases (e.g. an npm package with a Rust/native binary), the pattern to check first is "does a pure-JS/older-major alternative exist" before spending more than 3 attempts on it.
 
 **Next:** run full P0 verification gate (backend boot + `/health`, frontend build, secret scan) and commit.
+
+---
+
+## 2026-08-13 — P1: vertical slice backend (POST/GET /reports)
+
+**Done:**
+- `backend/app/schemas.py`: `ReportOut`, `ReportCreateResponse`, `ReportDetailOut`, `StatusHistoryOut` — Pydantic v2, `from_attributes=True` for ORM conversion. No raw dicts cross the API boundary.
+- `backend/app/storage.py`: `save_report_image()` — validates `content_type` against the allowlist, caps size at `MAX_UPLOAD_MB`, and verifies the bytes are actually a decodable JPEG/PNG/WEBP via Pillow (`Image.open(...).verify()`) rather than trusting the client's declared MIME type. Saves under a `uuid4` filename; the original client filename is never used for anything (path-traversal-proof by construction). Tested directly: a real JPEG round-trips; a shell script with a spoofed `image/jpeg` content-type is correctly rejected with 415.
+- `backend/app/routers/reports.py`: `POST /reports` (multipart) and `GET /reports` (status/category/min_priority/bbox filters, `sort=priority|recent`, excludes duplicates by default). AI is `# STUB:` (fixed `category="pothole", confidence=0.5, severity=3`, zero embedding) — the real pipeline lands in P2.
+- `backend/app/main.py`: mounted `/uploads` as `StaticFiles`, included the reports router under `/api/v1`.
+
+**Root cause fixes:** none this unit (storage.py's negative-case test above caught the intended behavior correctly on the first pass — no bug).
+
+**Assumptions:**
+- **P1 has no auth system yet** (auth is explicitly a P4 milestone item: "JWT auth enforced"). PROJECT_SPEC §6's API contract table doesn't mark `POST /reports` as requiring auth (unlike `GET /reports/mine` and `PATCH .../status`, which are explicitly marked). Since `reports.user_id` is a frozen NOT NULL FK, `_get_demo_user()` seeds/reuses one `demo@civiclens.local` citizen row and attributes all P1 submissions to it. This is a real DB row, not fabricated data — flagged here per CLAUDE.md §0.5. **This will need revisiting in P4**: once real auth exists, `POST /reports` should attach the authenticated user if a valid token is present, and the demo-user fallback can stay for anonymous/no-login submission (the contract doesn't require login to report).
+
+**Verification (manual, via curl against a running server):**
+- `POST /api/v1/reports` with a real JPEG + lat/lng/description/address → 201, correct `priority_score` (46.0, matches the §4 formula by hand-calculation), image byte-verified and saved.
+- `GET /api/v1/reports`, `?sort=recent&limit=1`, `?category=pothole`, `?bbox=28,77,29,78` → all correct results.
+- `GET /api/v1/reports?category=not_a_category` → 422 as expected.
+- `POST /api/v1/reports` missing the required `image` field → 422 as expected.
+- Uploaded image fetched back via `GET /uploads/<uuid>.jpg` → 200, `content-type: image/jpeg`.
+- Cleaned up all test DB/upload artifacts after verification.
+
+**Known Issues:** none blocking.
+
+**Next:** citizen submit form (frontend) wired to `POST /reports`, then a reports list view to prove the full loop, closing out P1.

@@ -8,9 +8,9 @@ from starlette.concurrency import run_in_threadpool
 from app.config import settings
 from app.database import get_db
 from app.dedup import find_duplicate_canonical
-from app.models import Report, ReportEmbedding, User, as_utc
-from app.schemas import ReportCreateResponse, ReportOut
-from app.scoring import CATEGORIES, compute_priority_score
+from app.models import Report, ReportEmbedding, StatusHistory, User, as_utc
+from app.schemas import ReportCreateResponse, ReportDetailOut, ReportOut, StatusUpdateRequest
+from app.scoring import CATEGORIES, STATUSES, compute_priority_score
 from app.storage import save_report_image
 from ai.pipeline import analyze_image
 
@@ -179,3 +179,45 @@ def list_reports(
 
     reports = db.execute(stmt).scalars().all()
     return [_to_report_out(r) for r in reports]
+
+
+@router.get("/{report_id}", response_model=ReportDetailOut)
+def get_report(report_id: int, db: Session = Depends(get_db)) -> ReportDetailOut:
+    report = db.get(Report, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    duplicates = db.execute(
+        select(Report).where(Report.is_duplicate_of == report_id)
+    ).scalars().all()
+
+    base = _to_report_out(report)
+    return ReportDetailOut(
+        **base.model_dump(),
+        duplicates=[_to_report_out(d) for d in duplicates],
+        status_history=list(report.status_history),
+    )
+
+
+@router.patch("/{report_id}/status", response_model=ReportOut)
+def update_report_status(
+    report_id: int, body: StatusUpdateRequest, db: Session = Depends(get_db)
+) -> ReportOut:
+    # NOTE: PROJECT_SPEC.md §6 marks this "Authority role only" — role
+    # enforcement is not implemented yet (no auth system exists before P4,
+    # see the demo-user note on create_report). Anyone can call this until
+    # P4 wires up require_authority(). Tracked, not silently skipped.
+    if body.status not in STATUSES:
+        raise HTTPException(status_code=422, detail=f"Unknown status: {body.status}")
+
+    report = db.get(Report, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    old_status = report.status
+    report.status = body.status
+    db.add(StatusHistory(report_id=report.id, old_status=old_status, new_status=body.status, note=body.note))
+    db.commit()
+    db.refresh(report)
+
+    return _to_report_out(report)

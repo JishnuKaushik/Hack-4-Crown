@@ -1,0 +1,44 @@
+# Render.com deploy config (https://render.com/docs/blueprint-spec).
+# Deploy: connect the repo in the Render dashboard, it reads this file.
+# Set real secret values (SECRET_KEY, etc.) in the Render dashboard's env
+# var UI — never here, never in a commit.
+services:
+  - type: web
+    name: civiclens-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        sync: false # set manually in the Render dashboard — never commit real values
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+      - key: DATABASE_URL
+        value: sqlite:///./civiclens.db
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: MAX_UPLOAD_MB
+        value: 5
+      - key: ALLOWED_IMAGE_TYPES
+        value: image/jpeg,image/png,image/webp
+      - key: ALLOWED_ORIGINS
+        sync: false # set to the deployed frontend's real origin
+      - key: CLIP_MODEL_NAME
+        value: ViT-B-32
+      - key: CLIP_PRETRAINED
+        value: laion2b_s34b_b79k
+      - key: AI_ENABLED
+        value: true
+      - key: DUP_SIMILARITY_THRESHOLD
+        value: 0.86
+      - key: DUP_RADIUS_METERS
+        value: 100
+      - key: DUP_TIME_WINDOW_DAYS
+        value: 30
+      - key: DEBUG
+        value: false
+      - key: ENVIRONMENT
+        value: production

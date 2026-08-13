@@ -222,3 +222,31 @@ Handoff log. Updated continuously per CLAUDE.md §5.
 **P4 complete: full JWT auth, role gating, citizen tracking, browser-verified end to end.**
 
 **Next:** merge the map-view branch when ready, then P5 (hardening: error/loading state audit, input validation pass, seed data, README) and P6 (deploy prep, final secret scan).
+
+---
+
+## 2026-08-13 — P5: hardening (validation, seed data, README, AI-degradation gate)
+
+**Done:**
+- Error/loading state audit: all four async frontend pages (`Report.tsx`, `Dashboard.tsx`, `Track.tsx`, `Login.tsx`) already had loading/error states built in as they were written in P1/P3/P4 — confirmed by grep, no gaps found.
+- Input validation: `POST /reports`'s `description`/`address` form fields had no length cap (SQLite doesn't enforce `String(255)` at the DB level — it's advisory only), so an unbounded string could be submitted. Added `max_length=2000`/`255` on the Pydantic `Form(...)` fields, verified a 2500-char description gets 422'd and a normal one still succeeds.
+- `backend/seed.py`: seeds 18 demo reports across real Gurugram-area coordinates, spanning all 5 statuses and a real spread of priority bands (42-84 in the actual run). **Every category/severity/embedding comes from a genuine `analyze_image()` run** against real sample photos (`ai/samples/*.jpg`, added by the concurrent ai/ session) — nothing hardcoded, per CLAUDE.md §0.5. Only submission metadata (location jitter, timestamp, status, report_count) is synthetic, which is exactly what PROJECT_SPEC §9 asks P5 to pre-seed. Every seed report's description is prefixed `[SEED DATA]` so it's never mistaken for genuine citizen activity. Idempotent (skips if reports already exist, `--force` to override). Sample images get copied into `settings.upload_dir/seed/` so they're actually servable via the existing `/uploads` mount (`ai/samples/` itself isn't on that mount).
+- `README.md`: setup (PowerShell + Git Bash variants, per CLAUDE.md §3.3), demo flow, AI-degradation instructions, page/route table.
+
+**Root cause fixes:**
+1. Seed script's `avg_resolution_hours` came out as `0.0` for all resolved reports — cause: `created_at` and `updated_at` were both set to the same seeded timestamp. Fixed by giving `resolved`-status seed reports a randomized 2-72h gap between the two, matching how a real resolution would look. Verified: `41.1` after the fix.
+
+**Verification (real):**
+- `python seed.py` run for real: 18 reports created, real AI categories logged to console (`pothole`, `garbage_dump`, `waterlogging` — matching the sample filenames semantically, confirming genuine classification, not random output). Re-run confirmed idempotency (skipped without `--force`).
+- `GET /dashboard/stats` against the seeded data: `total: 18`, all 5 statuses represented, 3 categories, `high_priority_count: 3`, `avg_resolution_hours: 41.1`.
+- Seed images confirmed servable: `GET /uploads/seed/waterlogging.jpg` → 200, `image/jpeg`.
+- **Real browser** (Playwright): logged in as a newly-registered authority, dashboard rendered all 18 seeded reports with real thumbnails, correct priority badges, sorted by priority — screenshot captured, zero console errors.
+- **P5 gate — "kill the AI module, submissions still work end to end," done as a full browser pass this time (not just curl):** booted with `AI_ENABLED=false`, drove the citizen submit form in a real headless browser — result card correctly showed `Category: other, Severity: 3/5, Priority score: 36`, zero console errors.
+
+**Assumptions:** none new.
+
+**Known Issues:** none blocking.
+
+**P5 complete.**
+
+**Next:** P6 — deploy config, final secret scan, merge the map-view branch whenever it lands.

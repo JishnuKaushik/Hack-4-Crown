@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -10,11 +11,24 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app import models  # noqa: F401  — ensures models are registered on Base.metadata
 from app.routers import reports
+from ai import embeddings as ai_embeddings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Base.metadata.create_all(bind=engine)
+    if settings.ai_enabled:
+        # Load the CLIP model once at startup (PROJECT_SPEC.md §7.4), not on
+        # the first request. A failure here must not crash the app — the
+        # AI degradation rule (CLAUDE.md §4) applies at boot too: submissions
+        # still work via analyze_image()'s own fallback if the model never
+        # loaded.
+        try:
+            ai_embeddings.warm_up()
+        except Exception:
+            logger.exception("AI model warm-up failed; falling back per-request")
     yield
 
 

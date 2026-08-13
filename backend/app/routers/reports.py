@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -5,7 +7,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.database import get_db
-from app.models import Report, ReportEmbedding, User
+from app.dedup import find_duplicate_canonical
+from app.models import Report, ReportEmbedding, User, as_utc
 from app.schemas import ReportCreateResponse, ReportOut
 from app.scoring import CATEGORIES, compute_priority_score
 from app.storage import save_report_image
@@ -74,6 +77,14 @@ async def create_report(
     # off the event loop so one submission doesn't stall every other request.
     analysis = await run_in_threadpool(analyze_image, absolute_image_path, latitude, longitude)
 
+    canonical = find_duplicate_canonical(
+        db,
+        category=analysis.category,
+        latitude=latitude,
+        longitude=longitude,
+        embedding=analysis.embedding,
+    )
+
     priority = compute_priority_score(
         severity=analysis.severity, category=analysis.category, report_count=1, age_days=0
     )
@@ -90,6 +101,7 @@ async def create_report(
         severity=analysis.severity,
         priority_score=priority,
         report_count=1,
+        is_duplicate_of=canonical.id if canonical else None,
     )
     db.add(report)
     db.flush()
@@ -102,10 +114,23 @@ async def create_report(
         )
     )
 
+    if canonical is not None:
+        canonical.report_count += 1
+        age_days = (datetime.now(timezone.utc) - as_utc(canonical.created_at)).total_seconds() / 86400
+        canonical.priority_score = compute_priority_score(
+            severity=canonical.severity,
+            category=canonical.category,
+            report_count=canonical.report_count,
+            age_days=age_days,
+        )
+        db.add(canonical)
+
     db.commit()
     db.refresh(report)
 
-    return ReportCreateResponse(report=_to_report_out(report), duplicate_of=None)
+    return ReportCreateResponse(
+        report=_to_report_out(report), duplicate_of=canonical.id if canonical else None
+    )
 
 
 @router.get("", response_model=list[ReportOut])
